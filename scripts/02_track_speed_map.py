@@ -1,85 +1,81 @@
+"""Plot the fastest qualifying lap as a track map coloured by speed.
+
+Session: 2025 Italian Grand Prix (Monza), Qualifying.
+Output: figures/monza_2025_q_speed_map.png
+"""
+
+from pathlib import Path
+
 import fastf1
 import numpy as np
+from matplotlib import pyplot as plt
 from matplotlib.collections import LineCollection
 from matplotlib.colors import Normalize
-from matplotlib import pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
+
 YEAR = 2025
 EVENT = "Monza"
 SESSION_TYPE = "Q"
+OUTPUT_DIR = Path("figures")
 
 
 def load_session(year, event, session_type):
-    fastf1.Cache.configure()
+    fastf1.Cache.configure()  # uses FastF1's default cache location
     session = fastf1.get_session(year, event, session_type)
     session.load()
     return session
 
-def get_fastest_lap_telemetry(session):
-    fastest_lap = session.laps.pick_fastest()
-    telemetry = fastest_lap.get_telemetry()
-    return telemetry
 
-def clean_telemetry(telemetry):
-    # Remove unnecessary columns
-    columns_to_keep = ['X', 'Y', 'Speed']
-    cleaned_telemetry = telemetry[columns_to_keep]
-    return cleaned_telemetry
+def build_colored_segments(x, y, speed):
+    """Split a path into segments, with one speed value per segment."""
+    points = np.array([x, y]).T.reshape(-1, 1, 2)                 # (N, 1, 2)
+    segments = np.concatenate((points[:-1], points[1:]), axis=1)  # (N-1, 2, 2)
+    segment_speed = (speed[:-1] + speed[1:]) / 2                  # (N-1,)
+    return segments, segment_speed
+
+
+def format_lap_time(lap_time):
+    minutes, seconds = divmod(lap_time.total_seconds(), 60)
+    return f"{int(minutes)}:{seconds:06.3f}"
+
+
+def plot_speed_map(telemetry, title):
+    x = telemetry["X"].to_numpy()
+    y = telemetry["Y"].to_numpy()
+    speed = telemetry["Speed"].to_numpy()
+
+    segments, segment_speed = build_colored_segments(x, y, speed)
+
+    norm = Normalize(vmin=speed.min(), vmax=speed.max())
+    speed_cmap = LinearSegmentedColormap.from_list("speed", ["red", "yellow", "green"])
+    line_collection = LineCollection(segments, cmap=speed_cmap, norm=norm)
+    line_collection.set_array(segment_speed)
+    line_collection.set_linewidth(4)
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.add_collection(line_collection)
+    ax.autoscale()
+    ax.set_aspect("equal")  # keep the circuit's true proportions
+    ax.axis("off")
+    fig.colorbar(line_collection, ax=ax, label="Speed (km/h)")
+    ax.set_title(title, fontsize=12)
+    return fig
 
 
 def main():
     session = load_session(YEAR, EVENT, SESSION_TYPE)
-    telemetry = get_fastest_lap_telemetry(session)
-    cleaned_telemetry = clean_telemetry(telemetry)
-    print(cleaned_telemetry.head())
-    x = cleaned_telemetry['X']
-    y = cleaned_telemetry['Y']
-    speed = cleaned_telemetry['Speed'].to_numpy()
-    #print(x.shape)
-    #print(np.array([x,y]).shape)
-    '''
-        (-1,1,2)
-        [
-            [[x,y]],
-            [[x,y]]
-        ]
-    
-        if it was (-1,2,2)
-        [
-            [[x,y],[x,y]],
-            [[x,y],[x,y]],
-        ]
-        '''
-    #print(np.array([x,y]).T.reshape(-1,1,2).shape)
-    points = np.array([x,y]).T.reshape(-1,1,2)
-    #print(points.shape)
-    #print(points[:-1].shape)
-    #print(points[1:].shape)
-    segments = np.concatenate((points[:-1],points[1:]),axis = 1)
-    #print(segments.shape)
-    norm = Normalize(vmin=speed.min(), vmax=speed.max())
-    lc = LineCollection(segments, cmap='turbo', norm=norm)
-    segment_speed = (speed[:-1] + speed[1:]) / 2  # one value per segment
-    #segment_speed = speed[:-1]  # one value per segment
-    #print(segment_speed)
-    lc.set_array(segment_speed)
-    lc.set_linewidth(4)
-    #print(segment_speed[0:10])
-    #print("Points:", len(points))
-    #print("Segments:", len(segments))
-    #print("Segment speeds:", len(segment_speed))
-    #print("NaNs:", np.isnan(segment_speed).sum())  
-    fig, ax = plt.subplots(figsize=(8, 8))
-    ax.add_collection(lc)
-    ax.autoscale()
-    ax.set_aspect("equal")
-    ax.axis("off")
-    fig.colorbar(lc, ax=ax, label="Speed (km/h)")
-    ax.set_title("Speed Map of Fastest Lap - 2025 Italian GP (Monza) Qualifying")
+
     fastest_lap = session.laps.pick_fastest()
-    driver = fastest_lap['Driver']
-    lap_time = fastest_lap['LapTime'].total_seconds()
-    ax.set_title(f"{driver} | Monza 2025 Qualifying | Fastest Lap: {lap_time:.3f} seconds", fontsize=12)    
-    fig.savefig("figures/monza_2025_q_speed_map.png", dpi=200, bbox_inches="tight")
+    telemetry = fastest_lap.get_telemetry()
+
+    title = (
+        f"{fastest_lap['Driver']} | {EVENT} {YEAR} Qualifying | "
+        f"Fastest lap {format_lap_time(fastest_lap['LapTime'])}"
+    )
+    fig = plot_speed_map(telemetry, title)
+
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    fig.savefig(OUTPUT_DIR / "monza_2025_q_speed_map.png", dpi=200, bbox_inches="tight")
     plt.show()
 
 
