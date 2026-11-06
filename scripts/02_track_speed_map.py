@@ -74,6 +74,22 @@ def main():
     )
     fig = plot_speed_map(telemetry, title)
 
+    #OUTPUT_DIR.mkdir(exist_ok=True)
+    #fig.savefig(OUTPUT_DIR / "monza_2025_q_speed_map.png", dpi=200, bbox_inches="tight")
+    #plt.show()
+    circuit_info = session.get_circuit_info()
+    #print(circuit_info.columns)
+    corners = circuit_info.corners
+    #print(corners.head())
+
+    ax = fig.axes[0]
+    for _, row in corners.iterrows():
+        x = row["X"]
+        y = row["Y"]
+        number = row["Number"]
+        print(f"Corner {number}: X={x}, Y={y}")    
+        ax.text(x,y,str(number), ha="right", va="bottom", fontsize=10, color="black")
+
     OUTPUT_DIR.mkdir(exist_ok=True)
     fig.savefig(OUTPUT_DIR / "monza_2025_q_speed_map.png", dpi=200, bbox_inches="tight")
     plt.show()
